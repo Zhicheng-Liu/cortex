@@ -1,8 +1,10 @@
 cortex
 ======
 
-reference free variant assembly
+This is a fork from iqbal-lab/cortex as of today (15/02/2016).
 
-I'm just about to migrate Cortex officially from Sourceforge to Github, and make a new release.
-Lots of things are liable to change here in the next few days before I do so, so I recommend you
-don't use this just yet.
+The intention is to update the error correction code so that it could be used for 1000 Genomes ReadServer project.
+
+All rights reserved.
+
+
