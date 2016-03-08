@@ -61,6 +61,7 @@ typedef struct
   int node_coverage_threshold;
   int quality_score_offset;
   int max_read_length;
+  int min_read_length;
   int max_var_len;
   int remv_low_covg_sups_threshold;
   

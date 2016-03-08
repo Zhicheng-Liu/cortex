@@ -227,6 +227,7 @@ const char* usage=
 "   [--subsample FRAC] \t\t\t\t\t=\t Subsample input data, taking fraction FRAC of data. If you want to dump a binary after having done this, use --dump_binary\n" \
   // -w
 "   [--max_read_len] \t\t\t\t\t\t=\t (Unlike previous versions of Cortex) now required only if using --gt or --dump_filtered_readlen_distribution.\n" \
+"   [--min_read_len] \t\t\t\t\t\t=\t (Unlike previous versions of Cortex) now required only if using --err_correct_1kg.\n" \
 " \n**** FILTERING AND ERROR CORRECTION/CLEANING OPTIONS ****\n\n"\
   // -m
 "   [--quality_score_threshold INT] \t\t\t\t=\t Filter for quality scores in the input file (default 0).\n" \
@@ -243,7 +244,7 @@ const char* usage=
   // -F
 "   [--successively_dump_cleaned_colours SUFFIX] \t\t=\t Only to be used when also using --load_colours_only_where_overlap_clean_colour and --multicolour_bin\n\t\t\t\t\t\t\t\t\t Used to allow error-correction of low-coverage data on large numbers of individuals with large genomes.\n\t\t\t\t\t\t\t\t\t Requires the user specify a suffix which will be added to the names of cleaned binaries. See manual for details.\n"  \
   // -S
-  "   [--err_correct]\t\t\t\t\t\t=\t FIVE comma-separated arguments:\n\t\t\t\t\t\t\t\t\t(1) a filelist (listing FASTQ for correction)\n\t\t\t\t\t\t\t\t\t(2) a string/suffix less than 50 characters long \n\t\t\t\t\t\t\t\t\t  (/path/to/zam.fastq--->correction process --> outdir/zam.fastq.suffix)\n\t\t\t\t\t\t\t\t\t(3) an output directory\n\t\t\t\t\t\t\t\t\t(4) either 0 or 1. \n\t\t\t\t\t\t\t\t\t  O means discard a read if it has a low quality uncorrectable base, \n\t\t\t\t\t\t\t\t\t  1 means correct as many bases as you can, but if there is a low quality uncorrectable base, leave it uncorrected.\n\t\t\t\t\t\t\t\t\t(5) Experimental option - A number N of greedy extra bases to pad the end of the read with. \n\t\t\t\t\t\t\t\t\t  I suggest you use 0 (zero) for this, unless you are Jared Simpson\n\t\t\t\t\t\t\t\t\t   or Shane McCarthy, when you would enter 20.\n\t\t\t\t\t\t\t\t\t   The 1000 Genomes project wanted to be able to use a \n\t\t\t\t\t\t\t\t\t   particular BWT compression scheme, which required \n\t\t\t\t\t\t\t\t\t   the addition of N bases of sequence following the read, \n\t\t\t\t\t\t\t\t\t   from where it mapped in the reference. \n\t\t\t\t\t\t\t\t\t   Ignore this unless you are me, Jared or Shane for now. \n\t\t\t\t\t\t\t\t\t   In addition you must use --quality_score_threshold and --max_read_len.\n\t\t\t\t\t\t\t\t\tFinally, if you use --list_ref_fasta then Cortex will mark the + strand in the graph,\n\t\t\t\t\t\t\t\t\tand will print all reads in the + orientation \n"
+  "   [--err_correct]\t\t\t\t\t\t=\t FIVE comma-separated arguments:\n\t\t\t\t\t\t\t\t\t(1) a filelist (listing FASTQ for correction)\n\t\t\t\t\t\t\t\t\t(2) a string/suffix less than 50 characters long \n\t\t\t\t\t\t\t\t\t  (/path/to/zam.fastq--->correction process --> outdir/zam.fastq.suffix)\n\t\t\t\t\t\t\t\t\t(3) an output directory\n\t\t\t\t\t\t\t\t\t(4) either 0 or 1. \n\t\t\t\t\t\t\t\t\t  O means discard a read if it has a low quality uncorrectable base, \n\t\t\t\t\t\t\t\t\t  1 means correct as many bases as you can, but if there is a low quality uncorrectable base, leave it uncorrected.\n\t\t\t\t\t\t\t\t\t(5) Experimental option - A number N of greedy extra bases to pad the end of the read with. \n\t\t\t\t\t\t\t\t\t  I suggest you use 0 (zero) for this, unless you are Jared Simpson\n\t\t\t\t\t\t\t\t\t   or Shane McCarthy, when you would enter 20.\n\t\t\t\t\t\t\t\t\t   The 1000 Genomes project wanted to be able to use a \n\t\t\t\t\t\t\t\t\t   particular BWT compression scheme, which required \n\t\t\t\t\t\t\t\t\t   the addition of N bases of sequence following the read, \n\t\t\t\t\t\t\t\t\t   from where it mapped in the reference. \n\t\t\t\t\t\t\t\t\t   Ignore this unless you are me, Jared or Shane for now. \n\t\t\t\t\t\t\t\t\t   In addition you must use --quality_score_threshold, --min_read_len and --max_read_len.\n\t\t\t\t\t\t\t\t\tFinally, if you use --list_ref_fasta then Cortex will mark the + strand in the graph,\n\t\t\t\t\t\t\t\t\tand will print all reads in the + orientation \n"
 " \n\n**** OUTPUT STATISTICS AND SUPERNODES****\n\n" \
   // -A
 "   [--dump_covg_distribution FILENAME] \t\t\t\t=\t Print k-mer coverage distribution to the file specified\n" \
@@ -409,6 +410,7 @@ int default_opts(CmdLine * c)
   c->node_coverage_threshold=0;
   c->quality_score_offset = 33;//standard fastq, not illumina v-whatever fastq  
   c->max_read_length = 0;
+  c->min_read_length = 0;
   c->max_var_len = 10000;
   c->specified_max_var_len = false;
   c->remv_low_covg_sups_threshold=-1;
@@ -587,6 +589,7 @@ int parse_cmdline_inner_loop(int argc, char* argv[], int unit_size, CmdLine* cmd
     {"estim_e_with_snps",required_argument, NULL, 'u'},    
     {"high_diff",required_argument,NULL,'v'},
     {"max_read_len",required_argument,NULL,'w'},
+    {"min_read_len",required_argument,NULL,'W'},
     {"print_colour_coverages",no_argument,NULL,'x'},
     {"max_var_len",required_argument,NULL,'y'},
     {"list_ref_fasta",required_argument,NULL,'z'},
@@ -1083,6 +1086,20 @@ int parse_cmdline_inner_loop(int argc, char* argv[], int unit_size, CmdLine* cmd
 
 	break ;
       }
+
+    case 'W'://min_read_length
+      {
+	if (optarg==NULL)
+	  errx(1,"[--min_read_len] option requires (positive) integer argument");
+	if (atoi(optarg)<0)
+	  {
+	    errx(1,"[--min_read_len] option requires (positive) integer argument. Either you have entered 0 or such an enormous number i has overflowed\n");
+	  }
+	cmdline_ptr->min_read_length = atoi(optarg);
+
+	break ;
+      }
+
     case 'x':
       {
 	cmdline_ptr->print_colour_coverages=true;
@@ -1591,9 +1608,9 @@ int check_cmdline(CmdLine* cmd_ptr, char* error_string)
     {
       die("If you specify --err_correct then you must also specify a quality threshold with --quality_score_threshold\n");
     }
-  if ( (cmd_ptr->do_err_correction==true) &&  (cmd_ptr->max_read_length==0) )
+  if ( (cmd_ptr->do_err_correction==true) &&  ((cmd_ptr->max_read_length==0) || (cmd_ptr->min_read_length==0)) )
     {
-      die("If you specify --err_correct then you must also specify --max_read_len\n");
+      die("If you specify --err_correct then you must also specify --max_read_len && --min_read_len\n");
     }
 
   if ( (cmd_ptr->get_pan_genome_matrix==true) && (cmd_ptr->max_read_length==0) )

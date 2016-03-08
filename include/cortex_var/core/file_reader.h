@@ -37,6 +37,7 @@
 
 #include "global.h"
 #include "seq.h"
+#include "db_graph_ec.h"
 #include "dB_graph.h"
 #include "file_format.h"
 #include "graph_info.h"
@@ -166,6 +167,7 @@ int load_seq_into_array(FILE* chrom_fptr, int number_of_nodes_to_load, int lengt
 
 //functions for loading multicolour graphs
 long long load_multicolour_binary_from_filename_into_graph(char* filename,  dBGraph* db_graph, GraphInfo* ginfo, int* num_cols_in_loaded_binary); 
+long long load_multicolour_binary_from_filename_into_ec_graph(char* filename,  dBGraphEc* db_graph, GraphInfo* ginfo, int* num_cols_in_loaded_binary); 
 
 // last arg is to load the "union" of graphs. This is not a special case of load_multicolour
 long long load_single_colour_binary_data_from_filename_into_graph(char* filename,  dBGraph* db_graph, 

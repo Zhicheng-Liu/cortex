@@ -36,9 +36,11 @@
 #include <string_buffer.h>
 
 // cortex_var headers
-#include "element.h"
+#include "element_ec.h"
+#include "open_hash/hash_table_ec.h"
 #include "file_reader.h"
 #include "dB_graph.h"
+#include "db_graph_ec.h"
 #include "dB_graph_population.h"
 #include "cmd_line.h"
 #include "graph_info.h"
@@ -571,6 +573,7 @@ int main(int argc, char **argv)
 
   int hash_key_bits, bucket_size;
   dBGraph * db_graph = NULL;
+  dBGraphEc * db_graph_ec = NULL;
   short kmer_size;
 
   //next two needed much later
@@ -725,8 +728,8 @@ int main(int argc, char **argv)
 
   //Create the de Bruijn graph/hash table
   int max_retries=15;
-  db_graph = hash_table_new(hash_key_bits,bucket_size, max_retries, kmer_size);
-  if (db_graph==NULL)
+  db_graph_ec = hash_table_ec_new(hash_key_bits,bucket_size, max_retries, kmer_size);
+  if (db_graph_ec==NULL)
     {
       die("Giving up - unable to allocate memory for the hash table\n");
     }
@@ -935,10 +938,10 @@ int main(int argc, char **argv)
       
       if (cmd_line->input_multicol_bin==true)
 	{
-	  long long  bp_loaded = load_multicolour_binary_from_filename_into_graph(cmd_line->multicolour_bin,db_graph, 
+	  long long  bp_loaded = load_multicolour_binary_from_filename_into_ec_graph(cmd_line->multicolour_bin,db_graph_ec, 
 										  db_graph_info, &first_colour_data_starts_going_into);
 	  timestamp();
-	  printf("Loaded the multicolour binary %s, and got %qd kmers\n", cmd_line->multicolour_bin, bp_loaded/db_graph->kmer_size);
+	  printf("Loaded the multicolour binary %s, and got %qd kmers\n", cmd_line->multicolour_bin, bp_loaded/db_graph_ec->kmer_size);
 	  graph_has_had_no_other_binaries_loaded=false;
 	  timestamp();
 	  
@@ -1122,7 +1125,7 @@ int main(int argc, char **argv)
 
   if (cmd_line->successively_dump_cleaned_colours==false)
     {      
-      printf("Total kmers in table: %qd\n", hash_table_get_unique_kmers(db_graph));	  
+      printf("Total kmers in table: %qd\n", hash_table_ec_get_unique_kmers(db_graph_ec));	  
       printf("The following is a summary of the data that has been loaded, immediately after loading (prior to any error cleaning, calling etc)\n");
       printf("****************************************\n");
       printf("SUMMARY:\nColour\tSampleID\tMeanReadLen\tTotalSeq\tErrorCleaning\tLowCovSupsThresh\tLowCovNodesThresh\tPoolagainstWhichCleaned\n");
@@ -1261,7 +1264,7 @@ int main(int argc, char **argv)
 	      strbuf_chomp(line);
 	      if(strbuf_len(line) > 0)
 		{
-		  read_ref_fasta_and_mark_strand(line->buff, db_graph);
+		  read_ref_fasta_and_mark_strand(line->buff, db_graph_ec);
 		}
 	    }
 	  strbuf_free(line);
@@ -1271,8 +1274,8 @@ int main(int argc, char **argv)
 	  timestamp();
 	}
       error_correct_list_of_files(cmd_line->err_correction_filelist, cmd_line->quality_score_threshold, cmd_line->quality_score_offset,
-				  db_graph, cmd_line->err_correction_policy,
-				  cmd_line->max_read_length, cmd_line->err_correction_suffix,
+				  db_graph_ec, cmd_line->err_correction_policy,
+                  cmd_line->max_read_length, cmd_line->min_read_length, cmd_line->err_correction_suffix,
 				  cmd_line->err_correction_outdir->buff,
 				  cmd_line->do_greedy_padding, 
 				  cmd_line->greedy_pad,
@@ -1511,7 +1514,7 @@ int main(int argc, char **argv)
     }
 
   
-  hash_table_free(&db_graph);
+  hash_table_ec_free(&db_graph_ec);
   if (cmd_line->print_median_covg_only==true)
     {
       free_covg_array(working_ca_for_median);

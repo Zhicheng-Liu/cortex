@@ -47,6 +47,7 @@
 // cortex_var headers
 #include "binary_kmer.h"
 #include "dB_graph.h"
+#include "db_graph_ec.h"
 #include "seq.h"
 #include "file_reader.h"
 #include "dB_graph_supernode.h"
@@ -1723,7 +1724,7 @@ long long load_multicolour_binary_from_filename_into_graph(char* filename,  dBGr
 
 {
 
-  //printf("Load this binary - %s\n", filename);
+  printf("Load this binary - %s\n", filename);
   FILE* fp_bin = fopen(filename, "r");
   long long  seq_length = 0;
   dBNode node_from_file;
@@ -1735,6 +1736,8 @@ long long load_multicolour_binary_from_filename_into_graph(char* filename,  dBGr
   if (fp_bin == NULL){
     die("load_multicolour_binary_from_filename_into_graph cannot open file:%s\n",filename); 
   }
+
+  printf("load_multicolour_binary_from_filename_into_graph opened file");
 
   BinaryHeaderErrorCode ecode = EValid;
   BinaryHeaderInfo binfo;
@@ -1776,6 +1779,59 @@ long long load_multicolour_binary_from_filename_into_graph(char* filename,  dBGr
   return seq_length;
 }
 
+long long load_multicolour_binary_from_filename_into_ec_graph(char* filename,  dBGraphEc* db_graph, GraphInfo* ginfo, int* num_cols_in_loaded_binary) 
+
+{
+
+  printf("Load this binary - %s\n", filename);
+  FILE* fp_bin = fopen(filename, "r");
+  long long  seq_length = 0;
+  dBNodeEc node_from_file;
+  element_ec_initialise_kmer_covgs_edges_and_status_to_zero(&node_from_file);
+
+
+  if (fp_bin == NULL){
+    die("load_multicolour_binary_from_filename_into_graph cannot open file:%s\n",filename); 
+  }
+
+  printf("load_multicolour_binary_from_filename_into_graph opened file");
+
+  BinaryHeaderErrorCode ecode = EValid;
+  BinaryHeaderInfo binfo;
+  initialise_binary_header_info(&binfo, ginfo);//pass in the main graph info
+
+  //load_multicolour always loads into colours starting at 0, hence last argument of following line
+  if (!(check_binary_signature_NEW(fp_bin, db_graph->kmer_size, &binfo, &ecode, 0)))
+    {
+      die("Cannot load this binary(%s) - signature check fails. Wrong max kmer, "
+          "number of colours, or binary version. Exiting, error code %d\n", 
+	        filename, ecode);
+    }
+  else
+    {
+      *num_cols_in_loaded_binary = binfo.number_of_colours;
+    }
+
+  //always reads the multicol binary into successive colours starting from 0 - assumes the hash table is empty prior to this
+  while (db_node_ec_read_multicolour_binary(fp_bin,db_graph->kmer_size,&node_from_file, *num_cols_in_loaded_binary, binfo.version)){
+    dBNodeEc * current_node  = NULL;
+    BinaryKmer tmp_kmer;
+    //current_node = hash_table_find_or_insert(element_get_key(element_get_kmer(&node_from_file),db_graph->kmer_size, &tmp_kmer),&found,db_graph);
+    current_node = hash_table_ec_insert(element_ec_get_key(element_ec_get_kmer(&node_from_file),db_graph->kmer_size, &tmp_kmer),db_graph);
+    
+    seq_length+=db_graph->kmer_size;
+   
+    int i;
+    for (i=0; i<(*num_cols_in_loaded_binary) ; i++)
+      {
+	element_ec_add_edges(current_node, i, element_ec_get_edge_copy(node_from_file, i));
+	db_node_ec_update_coverage(current_node, i, db_node_ec_get_coverage(&node_from_file,i));
+      }
+  }
+  
+  fclose(fp_bin);
+  return seq_length;
+}
 
 
 // this is not a special case of load_multicolour..!
