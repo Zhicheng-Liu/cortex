@@ -128,12 +128,28 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
   quality_cutoff+=ascii_qual_offset;
   short kmer_size = db_graph->kmer_size;
 
-  //setup output file for corrected reads, plus two stats files
-  FILE* out_fp = fopen(outfile, "w");
-  if (out_fp==NULL)
-    {
-      die("Unable to open output file %s\n", outfile);
-    }
+  StrBuf* uncorrectedGoodQual_file = strbuf_create(outfile);
+  StrBuf* uncorrectedLowQual_file = strbuf_create(outfile);
+  StrBuf* corrected_file = strbuf_create(outfile);
+  StrBuf* discarded_undefined_file = strbuf_create(outfile);
+  StrBuf* discarded_uncorrectable_file = strbuf_create(outfile);
+  StrBuf* discarded_shortread_file = strbuf_create(outfile);
+  
+
+  strbuf_append_str(uncorrectedGoodQual_file, ".printuncorrectedgoodqual");
+  strbuf_append_str(uncorrectedLowQual_file, ".printuncorrectedlowqual");
+  strbuf_append_str(corrected_file, ".printcorrected");
+  strbuf_append_str(discarded_undefined_file, ".discardundefinedbase");
+  strbuf_append_str(discarded_uncorrectable_file, ".discarduncorrectable");
+  strbuf_append_str(discarded_shortread_file, ".discardshortread");
+
+  FILE* uncorrectedGoodQual_fp = fopen(uncorrectedGoodQual_file->buff, "w");
+  FILE* uncorrectedLowQual_fp = fopen(uncorrectedLowQual_file->buff, "w");
+  FILE* corrected_fp = fopen(corrected_file->buff, "w");
+  FILE* discarded_undefined_fp = fopen(discarded_undefined_file->buff, "w");
+  FILE* discarded_uncorrectable_fp = fopen(discarded_uncorrectable_file->buff, "w");
+  FILE* discarded_shortread_fp = fopen(discarded_shortread_file->buff, "w");
+
   char* suff1 = ".distrib_num_modified_bases";
   char* suff2 = ".distrib_posn_modified_bases";
   char* suff3 =".read_stats";
@@ -182,12 +198,24 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
   dBNodeEc* last_node_in_read;
   Orientation last_or_in_read;
   int num_original_reads=0, num_final_reads=0, num_corrected_reads=0, num_discarded_reads=0;
+  int num_discarded_undefined = 0;
+  int num_discarded_uncorrectable = 0;
+  int num_discarded_short_read = 0;
+  int num_print_uncorrected_lowqual = 0;
+  int num_print_uncorrected_goodqual = 0;
+  int num_print_corrected = 0;
+
+  StrBuf* buf_dashes = strbuf_create("---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
+
   while(seq_next_read(sf))
     {
       int count_corrected_bases=0;
       //NOTE - uses modified version fo Isaacs code - new func
       seq_read_all_bases_and_quals(sf, buf_seq, buf_qual);
       StrBuf* buf_seq_debug  = strbuf_clone(buf_seq);
+      StrBuf* buf_seq_origin  = strbuf_clone(buf_seq);
+      StrBuf* buf_seq_fixed = strbuf_clone(buf_dashes);
+      strbuf_resize(buf_seq_fixed, strbuf_len(buf_seq)+1);
       
       int read_len = seq_get_length(sf);
       int num_kmers = read_len-kmer_size+1;
@@ -291,13 +319,13 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
 	      }
 	    else//kmer not in graph and quality bad
 	      {
-		boolean fixed = fix_end_if_unambiguous(direction, buf_seq, buf_qual, quality_cutoff, pos, 
+          boolean fixed = fix_end_if_unambiguous(direction, buf_seq, buf_seq_fixed, buf_qual, quality_cutoff, pos, 
 						       working_buf, working_str, db_graph);
 		if ( (policy==DiscardReadIfLowQualBaseUnCorrectable) 
 		     &&  
 		     (fixed==false) )
 		  {
-		    *decision=Discard;
+		    *decision=DiscardUncorrectable;
 		  }
 		else if (fixed==true)
 		  {
@@ -320,6 +348,9 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
       }			      
       //end of local functions
 
+      if ( buf_seq->len < min_read_len ) {
+        dec = DiscardShortRead; // Discard read if its original read length is less than min_read_len
+      }
 
       num_original_reads++;
 
@@ -335,29 +366,22 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
 	      //then it really was able to correct at least one base somewhere
 	      any_fixing_done=true;
 	    }
+      else {
+        dec = PrintUncorrectedLowQual;
+      }
 	}
 
-      if ( buf_seq->len < min_read_len ) {
-        dec = Discard; // Discard read if its original read length is less than min_read_len
-      }
-
-      if ( dec != Discard ) {
+      if ( dec != DiscardUndefined && dec != DiscardUncorrectable && dec != DiscardShortRead ) {
         int j;
         char* seq = buf_seq->buff;
         for ( j=0; j<buf_seq->len; j++ ) {
           if ( char_to_binary_nucleotide(seq[j]) == Undefined ) {
-            dec = Discard;
+            dec = DiscardUndefined;
             break;
           }
         }
       }
 
-      if (dec==Discard)
-	{
-	  num_discarded_reads++;
-	}
-      else
-	{
       int low_qual_num = 0;
       size_t i = 0;
       for ( ; i<read_len; ++i ) {
@@ -366,7 +390,32 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
         }
       }
 
-      fprintf(out_fp, ">%s>%d>%d\n", seq_get_read_name(sf), num_corrections_to_this_read_for_debug, low_qual_num);
+      if (dec==DiscardUndefined)
+        {
+          fprintf(discarded_undefined_fp, ">%s>%d>%d\n", seq_get_read_name(sf), num_corrections_to_this_read_for_debug, low_qual_num);
+          fprintf(discarded_undefined_fp, "%s\n", buf_seq->buff);
+          fprintf(discarded_undefined_fp, "%s\n", buf_qual->buff);
+          num_discarded_undefined++;
+          num_discarded_reads++;
+        }
+      else if (dec==DiscardUncorrectable)
+        {
+          fprintf(discarded_uncorrectable_fp, ">%s>%d>%d\n", seq_get_read_name(sf), num_corrections_to_this_read_for_debug, low_qual_num);
+          fprintf(discarded_uncorrectable_fp, "%s\n", buf_seq->buff);
+          fprintf(discarded_uncorrectable_fp, "%s\n", buf_qual->buff);
+          num_discarded_uncorrectable++;
+          num_discarded_reads++;
+        }
+      else if (dec==DiscardShortRead)
+        {
+          fprintf(discarded_shortread_fp, ">%s>%d>%d\n", seq_get_read_name(sf), num_corrections_to_this_read_for_debug, low_qual_num);
+          fprintf(discarded_shortread_fp, "%s\n", buf_seq->buff);
+          fprintf(discarded_shortread_fp, "%s\n", buf_qual->buff);
+          num_discarded_short_read++;
+          num_discarded_reads++;
+        }
+      else
+	{
       char last_kmer_str[db_graph->kmer_size];
       if ( (rev_comp_read_if_on_reverse_strand==true)
            && (strand_first_good_kmer==reverse) )
@@ -406,12 +455,28 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
 					     db_graph, num_greedy_bases, buf_seq);
 		}
 	    }
+
+      if ( dec == PrintUncorrectedGoodQual ) {
+        fprintf(uncorrectedGoodQual_fp, ">%s>%d>%d\n", seq_get_read_name(sf), num_corrections_to_this_read_for_debug, low_qual_num);
+        fprintf(uncorrectedGoodQual_fp, "%.*s\n", read_len_final, buf_seq->buff );
+        fprintf(uncorrectedGoodQual_fp, "%s\n", buf_qual->buff);
+        num_print_uncorrected_goodqual++;
+      }
+      else if ( dec == PrintUncorrectedLowQual ) {
+        fprintf(uncorrectedLowQual_fp, ">%s>%d>%d\n", seq_get_read_name(sf), num_corrections_to_this_read_for_debug, low_qual_num);
+        fprintf(uncorrectedLowQual_fp, "%.*s\n", read_len_final, buf_seq->buff );
+        fprintf(uncorrectedLowQual_fp, "%s\n", buf_qual->buff);
+        num_print_uncorrected_lowqual++;
+      }
+      else if ( dec == PrintCorrected ) {
+        fprintf(corrected_fp, ">%s>%d>%d\n", seq_get_read_name(sf), num_corrections_to_this_read_for_debug, low_qual_num);
+        fprintf(corrected_fp, "%s\n", buf_seq_origin->buff);
+        fprintf(corrected_fp, "%s\n", buf_seq_fixed->buff);
+        fprintf(corrected_fp, "%.*s\n", read_len_final, buf_seq->buff );
+        fprintf(corrected_fp, "%s\n", buf_qual->buff);
+        num_print_corrected++;
+      }
 	  
-	  fprintf(out_fp, "%.*s\n", read_len_final, buf_seq->buff );
-	  if (add_greedy_bases_for_better_bwt_compression==false)
-	    {
-	      fprintf(out_fp, "+\n%s\n", buf_qual->buff);
-	    }
 	  if (count_corrected_bases<bases_modified_count_array_size)
 	    {
 	      bases_modified_count_array[count_corrected_bases]++;
@@ -427,10 +492,25 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
 	    }
 	}
       strbuf_free(buf_seq_debug);
+      strbuf_free(buf_seq_origin);
+      strbuf_free(buf_seq_fixed);
     }
 
     seq_file_close(sf);
-    fclose(out_fp);
+
+    fclose(uncorrectedGoodQual_fp);
+    fclose(uncorrectedLowQual_fp);
+    fclose(corrected_fp);
+    fclose(discarded_undefined_fp);
+    fclose(discarded_uncorrectable_fp);
+    fclose(discarded_shortread_fp);
+
+    strbuf_free(uncorrectedGoodQual_file);
+    strbuf_free(uncorrectedLowQual_file);
+    strbuf_free(corrected_file);
+    strbuf_free(discarded_undefined_file);
+    strbuf_free(discarded_uncorrectable_file);
+    strbuf_free(discarded_shortread_file);
 
     //write out the stats files
     int i;
@@ -445,10 +525,17 @@ inline void error_correct_file_against_graph(char* fastq_file, char quality_cuto
     fprintf(out_stat3, "Final reads:\t%d\n", num_final_reads);
     fprintf(out_stat3, "Corrected reads:\t%d\n", num_corrected_reads);
     fprintf(out_stat3, "Discarded reads:\t%d\n", num_discarded_reads);
+    fprintf(out_stat3, "Discarded undefined:\t%d\n", num_discarded_undefined);
+    fprintf(out_stat3, "Discarded uncorrectable:\t%d\n", num_discarded_uncorrectable);
+    fprintf(out_stat3, "Discarded shortread:\t%d\n", num_discarded_short_read);
+    fprintf(out_stat3, "Print uncorrected lowqual:\t%d\n", num_print_uncorrected_lowqual);
+    fprintf(out_stat3, "Print uncorrected goodqual:\t%d\n", num_print_uncorrected_goodqual);
+    fprintf(out_stat3, "Print corrected:\t%d\n", num_print_corrected);
     fclose(out_stat3);
     strbuf_free(buf_seq);
     strbuf_free(buf_qual);
     strbuf_free(working_buf);
+    strbuf_free(buf_dashes);
     free(stat1);
     free(stat2);
     free(stat3);
@@ -501,7 +588,7 @@ ReadCorrectionDecison get_first_good_kmer_and_populate_qual_array(const char* de
       //performance choice - exit the function immediately,
       //as we know we will print uncorrected.
       //saves us the bother of making hash queries
-      return PrintUncorrected;
+      return PrintUncorrectedGoodQual;
     }
 
 
@@ -513,7 +600,7 @@ ReadCorrectionDecison get_first_good_kmer_and_populate_qual_array(const char* de
 
       if (seq_to_binary_kmer(local_kmer, dbg->kmer_size, &curr_kmer)==NULL)
 	{
-      return Discard;
+      return DiscardUndefined;
       //printf("There is an N in the sequence.\n");
 	  //there is an N
 	}
@@ -541,7 +628,7 @@ ReadCorrectionDecison get_first_good_kmer_and_populate_qual_array(const char* de
 		}
 	      if (all_qualities_good==true)
 		{
-		  return PrintUncorrected;
+		  return PrintUncorrectedGoodQual;
 		}
 	    }
 	}
@@ -552,11 +639,11 @@ ReadCorrectionDecison get_first_good_kmer_and_populate_qual_array(const char* de
       //no good kmers, and not all bases are high quality.
       if (policy==DiscardReadIfLowQualBaseUnCorrectable)
 	{
-	  return Discard;
+	  return DiscardUncorrectable;
 	}
       else
 	{
-	  return PrintUncorrected;
+	  return PrintUncorrectedLowQual;
 	}
     }
   else
@@ -568,7 +655,7 @@ ReadCorrectionDecison get_first_good_kmer_and_populate_qual_array(const char* de
 
 //This function fixes a kmer to match the graph if there is a unique way of doing so
 //the quality scores are here ONLY to allow fixing of the quality score at any fixed base.
-boolean fix_end_if_unambiguous(WhichEndOfKmer which_end, StrBuf* read_buffer, StrBuf* qual_buffer, char quality_cutoff, int pos, 
+boolean fix_end_if_unambiguous(WhichEndOfKmer which_end, StrBuf* read_buffer, StrBuf* fixed_buffer, StrBuf* qual_buffer, char quality_cutoff, int pos, 
 			       StrBuf* kmer_buf, char* kmer_str,//kmer_buf and kmer_str both working variablesm prealloced by caller
 			       dBGraphEc* dbg)
 {
@@ -613,12 +700,18 @@ boolean fix_end_if_unambiguous(WhichEndOfKmer which_end, StrBuf* read_buffer, St
     {
       if (which_end==Left)
 	{
+      char c = strbuf_get_char(read_buffer, pos);
+      strbuf_set_char(fixed_buffer, pos, c);
 	  mutate_base(read_buffer, pos, which_mutant_fixes);
+	  mutate_base(fixed_buffer, pos, which_mutant_fixes);
 	  set_qual_to_just_above_cutoff(qual_buffer, pos, quality_cutoff);
 	}
       else
 	{
+      char c = strbuf_get_char(read_buffer, pos+dbg->kmer_size -1);
+      strbuf_set_char(fixed_buffer, pos+dbg->kmer_size -1, c);
 	  mutate_base(read_buffer, pos+dbg->kmer_size -1, which_mutant_fixes);
+	  mutate_base(fixed_buffer, pos+dbg->kmer_size -1, which_mutant_fixes);
 	  set_qual_to_just_above_cutoff(qual_buffer, pos+dbg->kmer_size-1, quality_cutoff);
 	}
       return true;

@@ -53,9 +53,12 @@
 
 
 typedef enum {
-  PrintUncorrected =0,
-  PrintCorrected   =1,
-  Discard          =2
+  PrintUncorrectedGoodQual =0,
+  PrintCorrected           =1,
+  PrintUncorrectedLowQual  =2,
+  DiscardUndefined         =3,
+  DiscardUncorrectable     =4,
+  DiscardShortRead         =5
 } ReadCorrectionDecison;
 
 typedef enum {
@@ -95,7 +98,7 @@ ReadCorrectionDecison get_first_good_kmer_and_populate_qual_array(const char* de
 								  dBGraphEc* dbg, HandleLowQualUncorrectable policy,
 								  boolean we_will_want_to_revcomp_reads_on_rev_strand);
 
-boolean fix_end_if_unambiguous(WhichEndOfKmer which_end, StrBuf* read_buffer,  StrBuf* qual_buffer, char quality_cutoff, int pos, 
+boolean fix_end_if_unambiguous(WhichEndOfKmer which_end, StrBuf* read_buffer, StrBuf* fixed_buffer, StrBuf* qual_buffer, char quality_cutoff, int pos, 
 			       StrBuf* kmer_buf, char* kmer_str,
 			       dBGraphEc* dbg);
 void set_qual_to_just_above_cutoff(StrBuf* qualbuf, int pos, char cutoff);
